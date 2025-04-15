@@ -12,7 +12,9 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @RestController
@@ -29,53 +31,47 @@ public class AutowiredController {
 	}
 
 	@PostMapping(path = "/api/v1/cart/apply_offer")
-	public ApplyOfferResponse applyOffer(@RequestBody ApplyOfferRequest applyOfferRequest) throws Exception {
+	public Map<String, Object> applyOffer(@RequestBody ApplyOfferRequest applyOfferRequest) throws Exception {
 		System.out.println(applyOfferRequest);
-		int cartVal = applyOfferRequest.getCart_value();
+		int cartVal = Math.max(0, applyOfferRequest.getCart_value()); // Ensure non-negative cart value
 		SegmentResponse segmentResponse = getSegmentResponse(applyOfferRequest.getUser_id());
-		Optional<OfferRequest> matchRequest = allOffers.stream().filter(x->x.getRestaurant_id()==applyOfferRequest.getRestaurant_id())
-				.filter(x->x.getCustomer_segment().contains(segmentResponse.getSegment()))
+		Optional<OfferRequest> matchRequest = allOffers.stream()
+				.filter(x -> x.getRestaurant_id() == applyOfferRequest.getRestaurant_id())
+				.filter(x -> x.getCustomer_segment().contains(segmentResponse.getSegment()))
 				.findFirst();
 
-		if(matchRequest.isPresent()){
+		if (matchRequest.isPresent()) {
 			System.out.println("got a match");
-//			System.out.println(matchRequest.get());
 			OfferRequest gotOffer = matchRequest.get();
 
-			if(gotOffer.getOffer_type().equals("FLATX")) {
-				cartVal = cartVal - gotOffer.getOffer_value();
+			if (gotOffer.getOffer_type().equals("FLATX")) {
+				cartVal = Math.max(0, cartVal - gotOffer.getOffer_value());
 			} else {
-				cartVal = (int) (cartVal - cartVal * gotOffer.getOffer_value()*(0.01));
+				cartVal = (int) Math.max(0, cartVal - cartVal * gotOffer.getOffer_value() * (0.01));
 			}
-
 		}
-		return new ApplyOfferResponse(cartVal);
+		Map<String, Object> response = new HashMap<>();
+		response.put("cart_value", cartVal);
+		return response;
 	}
 
-	private SegmentResponse getSegmentResponse(int userid)
-	{
+	private SegmentResponse getSegmentResponse(int userid) {
 		SegmentResponse segmentResponse = new SegmentResponse();
 		try {
 			String urlString = "http://localhost:1080/api/v1/user_segment?" + "user_id=" + userid;
 			URL url = new URL(urlString);
-			HttpURLConnection con = (HttpURLConnection) url.openConnection();
-			con.setRequestMethod("GET");
 			HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-
-
+			connection.setRequestMethod("GET");
 			connection.setRequestProperty("accept", "application/json");
 
-			// This line makes the request
 			InputStream responseStream = connection.getInputStream();
-
-			// Manually converting the response body InputStream to APOD using Jackson
 			ObjectMapper mapper = new ObjectMapper();
-			 segmentResponse = mapper.readValue(responseStream,SegmentResponse.class);
+			segmentResponse = mapper.readValue(responseStream, SegmentResponse.class);
 			System.out.println("got segment response" + segmentResponse);
-
 
 		} catch (Exception e) {
 			System.out.println(e);
+			segmentResponse.setSegment("unknown");
 		}
 		return segmentResponse;
 	}
